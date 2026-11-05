@@ -142,13 +142,13 @@
       const allowedTypes = ["audio/mpeg", "audio/wav", "audio/x-wav"];
       const extension = file.name.split(".").pop().toLowerCase();
 
-      if (!["mp3", "wav"].includes(extension)) {
+      if (!["mp3", "wav", "flac"].includes(extension)) {
         statusBox.textContent = "Only MP3 and WAV files are accepted.";
         return;
       }
 
-      if (file.size > 20 * 1024 * 1024) {
-        statusBox.textContent = "Your audio file must be under 20 MB.";
+      if (file.size > 50 * 1024 * 1024) {
+        statusBox.textContent = "Your audio file must be under 50 MB.";
         return;
       }
 
