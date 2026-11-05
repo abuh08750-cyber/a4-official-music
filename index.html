@@ -183,11 +183,35 @@
             audio_path: filePath
           }]);
 
-        if (insertError) throw insertError;
+        
+if (insertError) throw insertError;
 
-        statusBox.textContent =
-          "Thank you! Your song has been submitted successfully.";
-        form.reset();
+// Send email notification
+const { error: notificationError } =
+  await supabaseClient.functions.invoke(
+    "send-song-notification",
+    {
+      body: {
+        artist_name: artist,
+        email: email,
+        phone: phone,
+        message: message,
+        audio_path: filePath
+      }
+    }
+  );
+
+if (notificationError) {
+  console.error("Email notification failed:", notificationError);
+  statusBox.textContent =
+    "Song submitted successfully, but email notification failed.";
+} else {
+  statusBox.textContent =
+    "Thank you! Your song has been submitted successfully.";
+}
+
+form.reset();
+            
 
       } catch (error) {
         console.error(error);
