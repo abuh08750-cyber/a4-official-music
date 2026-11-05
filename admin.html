@@ -4,23 +4,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>A4 Official Music | Admin Dashboard</title>
+<title>A4 Official Music | Admin</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#101010;color:#fff;font-family:Arial,sans-serif;padding:18px}
+body{margin:0;background:#101010;color:#fff;font-family:Arial;padding:16px}
 .container{max-width:1000px;margin:auto}
 h1{font-size:25px}
-.card{background:#1d1d1d;padding:18px;border-radius:12px;margin:15px 0}
+.card,.submission{background:#202020;padding:17px;border-radius:12px;margin:14px 0}
 input,button,select{width:100%;padding:13px;margin:7px 0;border:0;border-radius:7px;font-size:15px}
-input{background:#333;color:white}
+input,select{background:#333;color:white}
 button{background:#e5b800;color:#111;font-weight:bold;cursor:pointer}
 .logout{background:#444;color:white}
-.submission{background:#242424;padding:16px;border-radius:10px;margin:14px 0;overflow-wrap:anywhere}
+.submission{background:#252525;overflow-wrap:anywhere}
 .submission p{line-height:1.5}
 audio{width:100%;margin:10px 0}
 .small{color:#aaa;font-size:13px}
 .hidden{display:none}
+.filters{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media(max-width:450px){.filters{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -39,134 +41,163 @@ audio{width:100%;margin:10px 0}
 <div id="dashboard" class="hidden">
 <div class="card">
 <h2>Song Submissions</h2>
-<button onclick="loadSongs()">REFRESH SUBMISSIONS</button>
-<button class="logout" onclick="logout()">LOGOUT</button>
+<input id="search" placeholder="Search artist, email or phone..." oninput="renderSongs()">
+<div class="filters">
+<select id="filter" onchange="renderSongs()">
+<option value="All">All Statuses</option>
+<option value="Pending">Pending</option>
+<option value="Approved">Approved</option>
+<option value="Rejected">Rejected</option>
+</select>
+<button onclick="loadSongs()">REFRESH</button>
+</div>
 <p id="count"></p>
 <p id="message"></p>
+<button class="logout" onclick="logout()">LOGOUT</button>
 </div>
 <div id="songs"></div>
 </div>
 </div>
 
 <script>
-const SUPABASE_URL = "https://nfhygairspjpjpuqpegs.supabase.co";
-const SUPABASE_KEY = "sb_publishable_hlN1ekYd5VPGo2SmajDcLQ_n1FkkrWe";
-const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const SUPABASE_URL="https://nfhygairspjpjpuqpegs.supabase.co";
+const SUPABASE_KEY="sb_publishable_hlN1ekYd5VPGo2SmajDcLQ_n1FkkrWe";
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+let allSongs=[];
 
-function safe(value){
-  return String(value ?? "").replace(/[&<>"']/g, c => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-  }[c]));
+function safe(v){
+ return String(v??"").replace(/[&<>"']/g,c=>({
+ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+ }[c]));
 }
 
 async function login(){
-  const email=document.getElementById("email").value.trim();
-  const password=document.getElementById("password").value;
-  const msg=document.getElementById("loginMessage");
-  msg.textContent="Logging in...";
-  const {data,error}=await db.auth.signInWithPassword({email,password});
-  if(error){msg.textContent=error.message;return;}
-  if(data.user.app_metadata?.role!=="admin"){
-    await db.auth.signOut();
-    msg.textContent="Admin access denied.";
-    return;
-  }
-  showDashboard();
+ const msg=document.getElementById("loginMessage");
+ msg.textContent="Logging in...";
+ const {data,error}=await db.auth.signInWithPassword({
+  email:document.getElementById("email").value.trim(),
+  password:document.getElementById("password").value
+ });
+ if(error){msg.textContent=error.message;return;}
+ if(data.user.app_metadata?.role!=="admin"){
+  await db.auth.signOut();
+  msg.textContent="Admin access denied.";
+  return;
+ }
+ showDashboard();
 }
 
 async function showDashboard(){
-  document.getElementById("loginBox").classList.add("hidden");
-  document.getElementById("dashboard").classList.remove("hidden");
-  await loadSongs();
+ document.getElementById("loginBox").classList.add("hidden");
+ document.getElementById("dashboard").classList.remove("hidden");
+ await loadSongs();
 }
 
 async function loadSongs(){
-  const box=document.getElementById("songs");
-  const message=document.getElementById("message");
-  box.innerHTML="Loading submissions...";
-  message.textContent="";
-  const {data,error}=await db
-    .from("song_submissions")
-    .select("id,artist_name,email,phone,message,audio_path,created_at,status")
-    .order("created_at",{ascending:false});
+ const box=document.getElementById("songs");
+ document.getElementById("message").textContent="";
+ box.textContent="Loading submissions...";
+ const {data,error}=await db.from("song_submissions")
+ .select("id,artist_name,email,phone,message,audio_path,created_at,status")
+ .order("created_at",{ascending:false});
 
-  if(error){box.innerHTML="Error: "+safe(error.message);return;}
-  document.getElementById("count").textContent="Total submissions: "+data.length;
-  if(!data.length){box.innerHTML="No songs submitted yet.";return;}
+ if(error){box.textContent="Error: "+error.message;return;}
+ allSongs=data||[];
+ renderSongs();
+}
 
-  box.innerHTML="";
-  for(const song of data){
-    const card=document.createElement("div");
-    card.className="submission";
-    card.innerHTML=`
-      <h3>${safe(song.artist_name)}</h3>
-      <p><b>Email:</b> ${safe(song.email)}</p>
-      <p><b>Phone:</b> ${safe(song.phone)}</p>
-      <p><b>Message:</b> ${safe(song.message)}</p>
-      <p><b>Date:</b> ${safe(new Date(song.created_at).toLocaleString())}</p>
-      <p><b>Status:</b> ${safe(song.status)}</p>
-      <audio controls preload="none"></audio>
-      <button class="download">DOWNLOAD SONG</button>
-      <select class="status">
-        <option value="Pending">Pending</option>
-        <option value="Approved">Approved</option>
-        <option value="Rejected">Rejected</option>
-      </select>
-      <button class="save">SAVE STATUS</button>
-      <p class="small result"></p>
-    `;
-    box.appendChild(card);
+async function renderSongs(){
+ const box=document.getElementById("songs");
+ const search=document.getElementById("search").value.toLowerCase().trim();
+ const filter=document.getElementById("filter").value;
 
-    card.querySelector(".status").value=song.status || "Pending";
+ const filtered=allSongs.filter(s=>{
+  const matchesSearch=[s.artist_name,s.email,s.phone]
+   .some(v=>String(v||"").toLowerCase().includes(search));
+  const matchesStatus=filter==="All"||(s.status||"Pending")===filter;
+  return matchesSearch&&matchesStatus;
+ });
 
-    const {data:audioData,error:audioError}=await db.storage
-      .from("song-pitches")
-      .createSignedUrl(song.audio_path,3600);
+ document.getElementById("count").textContent=
+ "Showing "+filtered.length+" of "+allSongs.length+" submissions";
 
-    if(!audioError && audioData?.signedUrl){
-      card.querySelector("audio").src=audioData.signedUrl;
-      card.querySelector(".download").onclick=()=>{
-        const a=document.createElement("a");
-        a.href=audioData.signedUrl;
-        a.download="";
-        a.target="_blank";
-        a.click();
-      };
-    }else{
-      card.querySelector("audio").replaceWith(document.createTextNode("Audio unavailable"));
-      card.querySelector(".download").disabled=true;
-    }
+ if(!filtered.length){box.innerHTML="<p>No matching submissions found.</p>";return;}
+ box.innerHTML="";
 
-    card.querySelector(".save").onclick=async()=>{
-      const newStatus=card.querySelector(".status").value;
-      const result=card.querySelector(".result");
-      result.textContent="Saving...";
-      const {error:updateError}=await db
-        .from("song_submissions")
-        .update({status:newStatus})
-        .eq("id",song.id);
-      result.textContent=updateError ? updateError.message : "Status saved!";
-      if(!updateError) song.status=newStatus;
-    };
+ for(const song of filtered){
+  const card=document.createElement("div");
+  card.className="submission";
+  card.innerHTML=`
+   <h3>${safe(song.artist_name)}</h3>
+   <p><b>Email:</b> ${safe(song.email)}</p>
+   <p><b>Phone:</b> ${safe(song.phone)}</p>
+   <p><b>Message:</b> ${safe(song.message)}</p>
+   <p><b>Date:</b> ${safe(new Date(song.created_at).toLocaleString())}</p>
+   <p><b>Status:</b> ${safe(song.status||"Pending")}</p>
+   <audio controls preload="none"></audio>
+   <button class="download">DOWNLOAD SONG</button>
+   <select class="status">
+    <option value="Pending">Pending</option>
+    <option value="Approved">Approved</option>
+    <option value="Rejected">Rejected</option>
+   </select>
+   <button class="save">SAVE STATUS</button>
+   <p class="small result"></p>
+  `;
+  box.appendChild(card);
+  card.querySelector(".status").value=song.status||"Pending";
+
+  const {data:audioData,error:audioError}=await db.storage
+   .from("song-pitches").createSignedUrl(song.audio_path,3600);
+
+  if(!audioError&&audioData?.signedUrl){
+   card.querySelector("audio").src=audioData.signedUrl;
+   card.querySelector(".download").onclick=()=>{
+    const a=document.createElement("a");
+    a.href=audioData.signedUrl;
+    a.download="";
+    a.target="_blank";
+    a.click();
+   };
+  }else{
+   card.querySelector("audio").replaceWith(
+    document.createTextNode("Audio unavailable")
+   );
+   card.querySelector(".download").disabled=true;
   }
+
+  card.querySelector(".save").onclick=async()=>{
+   const result=card.querySelector(".result");
+   const status=card.querySelector(".status").value;
+   result.textContent="Saving...";
+   const {error}=await db.from("song_submissions")
+    .update({status}).eq("id",song.id);
+   if(error){result.textContent="Error: "+error.message;return;}
+   song.status=status;
+   result.textContent="Status saved!";
+   renderSongs();
+  };
+ }
 }
 
 async function logout(){
-  await db.auth.signOut();
-  document.getElementById("dashboard").classList.add("hidden");
-  document.getElementById("loginBox").classList.remove("hidden");
+ await db.auth.signOut();
+ allSongs=[];
+ document.getElementById("dashboard").classList.add("hidden");
+ document.getElementById("loginBox").classList.remove("hidden");
 }
 
 (async()=>{
-  const {data}=await db.auth.getSession();
-  if(data.session){
-    if(data.session.user.app_metadata?.role==="admin"){
-      await showDashboard();
-    }else{
-      await db.auth.signOut();
-    }
+ const {data}=await db.auth.getSession();
+ if(data.session){
+  if(data.session.user.app_metadata?.role==="admin"){
+   await showDashboard();
+  }else{
+   await db.auth.signOut();
   }
+ }
 })();
 </script>
 </body>
-</html>
+  </html>
+  
